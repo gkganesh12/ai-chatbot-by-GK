@@ -1,0 +1,6 @@
+flask==3.0.3
+flask-cors==5.0.0
+torch==2.6.0
+transformers==4.49.0
+numpy>=1.17
+requests==2.32.3
