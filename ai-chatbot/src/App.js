@@ -1,153 +1,169 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import ReactMarkdown from 'react-markdown';
+import './App.css';
 
 // API endpoint configuration
 const API_URL = process.env.NODE_ENV === 'production'
-  ? 'https://ai-chatbot-by-gk.onrender.com'  // We'll update this once we deploy to Render
+  ? 'https://ai-chatbot-by-gk.onrender.com'
   : 'http://localhost:8000';
 
 function App() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
-  const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isServerConnected, setIsServerConnected] = useState(false);
   const [isCheckingConnection, setIsCheckingConnection] = useState(true);
+  const [error, setError] = useState("");
+  const messagesEndRef = useRef(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   useEffect(() => {
-    const checkServer = async () => {
-      try {
-        setIsCheckingConnection(true);
-        const response = await axios.get(`${API_URL}/`);
-        console.log("Server response:", response.data);
-        setIsServerConnected(true);
-        setError("");
-      } catch (err) {
-        console.error("Server connection error:", err);
-        setIsServerConnected(false);
-        setError("Cannot connect to server. Please make sure the backend is running.");
-      } finally {
-        setIsCheckingConnection(false);
-      }
-    };
+    scrollToBottom();
+  }, [messages]);
 
-    // Check connection immediately and then every 5 seconds
+  useEffect(() => {
     checkServer();
-    const interval = setInterval(checkServer, 5000);
-
-    // Cleanup interval on component unmount
+    const interval = setInterval(checkServer, 30000); // Check every 30 seconds
     return () => clearInterval(interval);
   }, []);
 
-  const sendMessage = async () => {
-    if (!input.trim() || !isServerConnected) return;
-    
+  const checkServer = async () => {
     try {
+      setIsCheckingConnection(true);
+      const response = await axios.get(`${API_URL}/`);
+      console.log("Server response:", response.data);
+      setIsServerConnected(true);
       setError("");
-      setIsLoading(true);
-      const userMessage = { role: "user", text: input };
-      setMessages(prevMessages => [...prevMessages, userMessage]);
-      setInput("");
+    } catch (err) {
+      console.error("Server connection error:", err);
+      setIsServerConnected(false);
+      setError("Cannot connect to server. Please ensure the server is running.");
+    } finally {
+      setIsCheckingConnection(false);
+    }
+  };
 
-      const response = await axios.post(`${API_URL}/chat`, { 
-        message: input 
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+
+    const timestamp = new Date().toLocaleTimeString();
+    const newMessage = {
+      text: input,
+      sender: 'user',
+      timestamp
+    };
+
+    setMessages(prev => [...prev, newMessage]);
+    setInput("");
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const response = await axios.post(`${API_URL}/chat`, {
+        message: input
       });
 
-      if (response.data.error) {
-        throw new Error(response.data.error);
-      }
+      const botMessage = {
+        text: response.data.response,
+        sender: 'bot',
+        timestamp: new Date().toLocaleTimeString()
+      };
 
-      const botMessage = { role: "bot", text: response.data.response };
-      setMessages(prevMessages => [...prevMessages, botMessage]);
+      setMessages(prev => [...prev, botMessage]);
     } catch (err) {
-      console.error("Error:", err);
-      setError(err.response?.data?.error || err.message || "Failed to send message. Please try again.");
-      // Remove the user message if the request failed
-      setMessages(prevMessages => prevMessages.slice(0, -1));
+      console.error("Error sending message:", err);
+      setError(err.response?.data?.error || "Failed to get response from the server");
+      
+      const errorMessage = {
+        text: "Sorry, I encountered an error. Please try again.",
+        sender: 'bot',
+        timestamp: new Date().toLocaleTimeString(),
+        isError: true
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === "Enter" && !isLoading && isServerConnected) {
-      sendMessage();
-    }
+  const clearChat = () => {
+    setMessages([]);
+    setError("");
   };
 
   return (
-    <div style={{ maxWidth: "500px", margin: "auto", padding: "20px" }}>
-      <h2>AI Chatbot</h2>
-      <div style={{ 
-        padding: "10px", 
-        marginBottom: "20px", 
-        backgroundColor: isServerConnected ? "#e8f5e9" : "#ffebee",
-        borderRadius: "4px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center"
-      }}>
-        <span style={{ 
-          height: "10px", 
-          width: "10px", 
-          borderRadius: "50%", 
-          backgroundColor: isServerConnected ? "#4caf50" : "#f44336",
-          display: "inline-block",
-          marginRight: "8px"
-        }}></span>
+    <div className="App">
+      <div className="connection-status">
         {isCheckingConnection ? (
-          "Checking server connection..."
+          <span className="checking">Checking server connection...</span>
+        ) : isServerConnected ? (
+          <span className="connected">Server Connected ✓</span>
         ) : (
-          isServerConnected ? "Server is connected" : "Server is not connected. Please make sure the backend is running."
+          <span className="disconnected">Server Disconnected ✗</span>
         )}
       </div>
-      <div style={{ height: "300px", overflowY: "auto", border: "1px solid #ccc", padding: "10px", marginBottom: "20px" }}>
-        {messages.map((msg, i) => (
-          <p key={i} style={{ 
-            textAlign: msg.role === "user" ? "right" : "left",
-            backgroundColor: msg.role === "user" ? "#e3f2fd" : "#f5f5f5",
-            padding: "8px 12px",
-            borderRadius: "8px",
-            margin: "4px 0"
-          }}>
-            <strong>{msg.role === "user" ? "You: " : "Bot: "}</strong> {msg.text}
-          </p>
-        ))}
-      </div>
-      {error && <div style={{ color: "red", marginBottom: "10px" }}>{error}</div>}
-      <div style={{ display: "flex", gap: "10px" }}>
-        <input 
-          value={input} 
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={handleKeyPress}
-          placeholder="Type a message..." 
-          style={{ 
-            flex: 1,
-            padding: "8px",
-            borderRadius: "4px",
-            border: "1px solid #ccc"
-          }}
-          disabled={isLoading || !isServerConnected}
-        />
-        <button 
-          onClick={sendMessage}
-          disabled={isLoading || !isServerConnected}
-          style={{
-            padding: "8px 16px",
-            backgroundColor: isLoading || !isServerConnected ? "#ccc" : "#007bff",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: isLoading || !isServerConnected ? "not-allowed" : "pointer"
-          }}
-        >
-          {isLoading ? "Sending..." : "Send"}
-        </button>
+
+      {error && <div className="error-message">{error}</div>}
+
+      <div className="chat-container">
+        <div className="messages">
+          {messages.map((message, index) => (
+            <div
+              key={index}
+              className={`message ${message.sender} ${message.isError ? 'error' : ''}`}
+            >
+              <div className="message-timestamp">{message.timestamp}</div>
+              <div className="message-content">
+                {message.sender === 'bot' ? (
+                  <ReactMarkdown>{message.text}</ReactMarkdown>
+                ) : (
+                  message.text
+                )}
+              </div>
+            </div>
+          ))}
+          {isLoading && (
+            <div className="message bot loading">
+              <div className="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        <div className="input-container">
+          <button 
+            className="clear-button"
+            onClick={clearChat}
+            disabled={messages.length === 0}
+          >
+            Clear Chat
+          </button>
+          <form onSubmit={handleSubmit} className="input-form">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Type your message..."
+              disabled={!isServerConnected || isLoading}
+            />
+            <button 
+              type="submit" 
+              disabled={!isServerConnected || isLoading || !input.trim()}
+            >
+              Send
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );
