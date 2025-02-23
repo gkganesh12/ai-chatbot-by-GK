@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 
-const API_URL = "http://localhost:8000";
+// API endpoint configuration
+const API_URL = process.env.NODE_ENV === 'production'
+  ? 'https://ai-chatbot-by-gk.onrender.com'  // We'll update this once we deploy to Render
+  : 'http://localhost:8000';
 
 function App() {
   const [input, setInput] = useState("");
@@ -15,7 +18,7 @@ function App() {
     const checkServer = async () => {
       try {
         setIsCheckingConnection(true);
-        const response = await axios.get(API_URL);
+        const response = await axios.get(`${API_URL}/`);
         console.log("Server response:", response.data);
         setIsServerConnected(true);
         setError("");
